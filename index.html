@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>我的私人菜譜公告版（月/週切換）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- 引入 jsPDF 與 SheetJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin:0; padding:0; background:#f9f9f9; }
+    header { background:#ff7043; color:white; padding:15px; text-align:center; font-size:22px; font-weight:bold; }
+    .container { padding:15px; }
+    .card { background:white; border-radius:10px; padding:15px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+    .category { font-weight:bold; margin-bottom:10px; font-size:18px; }
+    .btn { background:#ff7043; color:white; border:none; padding:10px 15px; border-radius:5px; cursor:pointer; margin:5px; }
+    .calendar { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; margin-top:10px; }
+    .day { background:#fff3e0; border-radius:5px; padding:10px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.1); min-height:150px; display:flex; flex-direction:column; justify-content:flex-start; }
+    .day-header { font-weight:bold; margin-bottom:5px; color:#d84315; }
+    select { width:100%; padding:5px; margin-bottom:5px; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; }
+    th, td { border:1px solid #ccc; padding:8px; text-align:center; }
+    th { background:#ffccbc; }
+    /* 顏色標記 */
+    .家常菜 { background:#ffe0b2; }  /* 橘色 */
+    .甜點 { background:#f8bbd0; }    /* 粉色 */
+    .湯品 { background:#bbdefb; }    /* 藍色 */
+  </style>
+</head>
+<body>
+  <header>📅 我的私人菜譜公告版（月/週切換）</header>
+  <div class="container">
+    <!-- 新增菜色 -->
+    <div class="card">
+      <div class="category">新增菜色</div>
+      <input type="text" id="dishName" placeholder="菜名"><br><br>
+      <select id="dishCategory">
+        <option>家常菜</option>
+        <option>甜點</option>
+        <option>湯品</option>
+      </select><br><br>
+      <input type="file" id="dishPhoto"><br><br>
+      <button class="btn" onclick="addDish()">新增</button>
+    </div>
+
+    <!-- 菜色清單 -->
+    <div class="card">
+      <div class="category">菜色清單</div>
+      <ul id="dishList"></ul>
+      <button class="btn" onclick="exportPDF()">📄 匯出 PDF</button>
+      <button class="btn" onclick="exportExcel()">📊 匯出 Excel</button>
+    </div>
+
+    <!-- 模式切換 -->
+    <div class="card">
+      <div class="category">菜單規劃模式</div>
+      <button class="btn" onclick="showMonthView()">月視圖</button>
+      <button class="btn" onclick="showWeekView()">週視圖</button>
+    </div>
+
+    <!-- 月視圖 -->
+    <div class="card" id="monthView" style="display:none;">
+      <div class="category">每月菜色清單（三餐）</div>
+      <label>選擇月份：</label>
+      <input type="month" id="monthPicker" onchange="generateCalendar()">
+      <div id="calendar" class="calendar"></div>
+      <button class="btn" onclick="printMenu()">🖨 列印整月菜單</button>
+    </div>
+
+    <!-- 週視圖 -->
+    <div class="card" id="weekView" style="display:none;">
+      <div class="category">每週菜色清單（三餐）</div>
+      <label>選擇起始日期：</label>
+      <input type="date" id="weekStart" onchange="generateWeekView()">
+      <table id="weekTable">
+        <thead>
+          <tr>
+            <th>日期</th>
+            <th>早餐</th>
+            <th>午餐</th>
+            <th>晚餐</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <button class="btn" onclick="printMenu()">🖨 列印本週菜單</button>
+    </div>
+  </div>
+
+<script>
+  let dishes = [];
+
+  function addDish(){
+    const name = document.getElementById('dishName').value;
+    const category = document.getElementById('dishCategory').value;
+    if(name){
+      dishes.push({name, category});
+      renderDishList();
+    }
+  }
+
+  function renderDishList(){
+    const list = document.getElementById('dishList');
+    list.innerHTML = '';
+    dishes.forEach(d => {
+      const li = document.createElement('li');
+      li.textContent = `${d.name} (${d.category})`;
+      list.appendChild(li);
+    });
+  }
+
+  // 月視圖
+  function generateCalendar(){
+    const monthInput = document.getElementById('monthPicker').value;
+    if(!monthInput) return;
+    const [year, month] = monthInput.split('-').map(Number);
+    const days = new Date(year, month, 0).getDate();
+    const calendar = document.getElementById('calendar');
+    calendar.innerHTML = '';
+    for(let i=1; i<=days; i++){
+      const dayDiv = document.createElement('div');
+      dayDiv.className = 'day';
+      dayDiv.innerHTML = `<div class="day-header">${month}月${i}日</div>
+        <label>早餐：</label>
+        <select onchange="colorizeDay(this)">
+          <option value="">選擇菜色</option>
+          ${dishes.map(d=>`<option data-category="${d.category}">${d.name}</option>`).join('')}
+        </select>
+        <label>午餐：</label>
+        <select onchange="colorizeDay(this)">
+          <option value="">選擇菜色</option>
+          ${dishes.map(d=>`<option data-category="${d.category}">${d.name}</option>`).join('')}
+        </select>
+        <label>晚餐：</label>
+        <select onchange="colorizeDay(this)">
+          <option value="">選擇菜色</option>
+          ${dishes.map(d=>`<option data-category="${d.category}">${d.name}</option>`).join('')}
+        </select>`;
+      calendar.appendChild(dayDiv);
+    }
+  }
+
+  function colorizeDay(selectElem){
+    const selectedOption = selectElem.options[selectElem.selectedIndex];
+    const category = selectedOption.getAttribute("data-category");
+    const parentDay = selectElem.closest(".day");
+    if(category){
+      parentDay.className = "day " + category;
+    }
+  }
+
+  // 週視圖
+  function generateWeekView(){
+    const startDateInput = document.getElementById('weekStart').value;
+    if(!startDateInput) return;
+    const startDate = new Date(startDateInput);
+    const tbody = document.querySelector("#weekTable tbody");
+    tbody.innerHTML = '';
+    for(let i=0; i<7; i++){
+      const date = new Date(startDate);
+      date.setDate(startDate.getDate()+i);
+      const dateStr = `${date.getMonth()+1}月${date.getDate()}日`;
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${dateStr}</td>
+        <td><select onchange="colorizeCell(this)"><option value="">選擇菜色</option>${dishes.map(d=>`<option data-category="${d.category}">${d.name}</option>`).join('')}</select></td>
+        <td><select onchange="colorizeCell(this)"><option value="">選擇菜色</option>${dishes.map(d=>`<option data-category="${d.category}">${d.name}</option>`).
